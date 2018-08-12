@@ -5,3 +5,6 @@ Before running, you must have the Google News pretrained word embeddings: http:/
 To run:
 
 ```python main.py```
+
+To do:
+* Make code more modular
