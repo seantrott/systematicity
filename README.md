@@ -8,3 +8,5 @@ To run:
 
 To do:
 * Make code more modular
+* Save dataset with embeddings so model doesn't have to be reloaded each time
+* Validate against other word embedding models?
