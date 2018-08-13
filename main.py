@@ -1,6 +1,6 @@
 """Main script."""
 
-import os 
+import os
 import gensim
 import pandas as pd
 
@@ -12,7 +12,9 @@ MODEL_PATH = os.environ['WORD2VEC_PATH']
 ROOT_PATH = 'data/raw/roots_celex_monosyllabic.txt'
 
 
-def main():
+def main(num_permutations=100):
+	"""Main script."""
+	components = []
 	print("Loading words")
 	roots_to_syllables = build_dataset()
 	print("Loading model")
@@ -26,7 +28,7 @@ def main():
 	    X_reduced = model_utils.reduce_dimensionality(X)
 	    df_performance = model_utils.evaluate_classifier_with_cv(
 	        X_reduced, y, n_folds=2, clf=clf, shuffled=False)
-	    permuted = model_utils.permutation_test(X_reduced, y, clf, 100)
+	    permuted = model_utils.permutation_test(X_reduced, y, clf, num_permutations)
 	    df = pd.concat([df_performance, permuted])
 	    df['component'] = [syllable_component for _ in range(len(df))]
 	    components.append(df)
