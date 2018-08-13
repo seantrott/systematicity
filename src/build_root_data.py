@@ -9,7 +9,6 @@ def construct_syllable_structure(syllable, nuclei='[5@694{8312i7u$#eqFEIQVU$]'):
     """Return dict of possible onset, nucleus, and coda, using phonetic transcription."""
     nucleus = re.findall(nuclei, syllable)
     if len(nucleus) < 1:
-        # raise Exception("No valid nucleus found in {syl}".format(syl=syllable))
         return None
     onset, coda = syllable.split(nucleus[0])
     return {'nucleus': nucleus[0],
