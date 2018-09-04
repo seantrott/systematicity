@@ -1,0 +1,132 @@
+---
+title: "Systematicity across grammatical category and other lexical features"
+output: html_document
+---
+
+# Introduction
+
+This report investigates whether the **sub-morphemic form-meaning systematicity** of different words correlates with various lexical features, including grammatical category, age of acquisition, and word frequency.
+
+Previous work ([Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short)) has found that age of acquisition (AoA) predicts systematicity, above and beyond other variables like orthographic/phonological length. Specifically, earlier-acquired words were more systematic.
+
+# Dataset
+
+```{r}
+setwd("/Users/strott/nlp/systematicity/")
+```
+
+
+## Systematicity of individual words
+
+```{r}
+setwd("/Users/strott/nlp/systematicity/")
+word_systematicity_scores = read_csv("data/processed/all_words_systematicity.csv")
+```
+
+We calculated the systematicity of each word following the same procedure as [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short). The Jupyter notebook containing this analysis can be found [here](https://github.com/seantrott/systematicity/blob/master/systematicity_by_word_class.ipynb). 
+We obtained monosyllabic, monomorphemic words from CELEX, then filtered on the words that appeared in the Google News word embeddings, resulting in `r nrow(word_systematicity_scores)` words overall.
+
+We then calculated a **global correlation** score between the *form* and *meaning* distances of each wordpair. To obtain by-word systematicity scores, we compared this global correlation to the correlation coefficient when omitting a particular word: the difference in scores is deemed the *contribution* a given word makes to a lexicon's global systematicity.
+
+The distribution of systematicity scores is plotted below:
+
+```{r}
+word_systematicity_scores %>%
+  ggplot(aes(x = impact)) +
+  geom_histogram() +
+  labs(x = "Contribution to systematicity",
+       title = "Distribution of systematicity scores") +
+  theme_minimal()
+```
+
+## Age of Acquisition data
+
+```{r}
+setwd("/Users/strott/nlp/systematicity/")
+aoa_kuperman = read_csv("data/raw/AoA_Kuperman.csv")
+aoa_kuperman$word = aoa_kuperman$Word
+```
+
+For AoA data, we used the same dataset that [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short) used, collected by [Kuperman et al (2012)](http://crr.ugent.be/archives/806).
+
+There are scores for `r nrow(aoa_kuperman)` words overall.
+
+```{r}
+aoa_kuperman %>%
+  ggplot(aes(x = Rating.Mean)) +
+  geom_histogram() +
+  labs(x = "Mean AoA Rating",
+       title = "Distribution of AoA ratings") +
+  theme_minimal()
+```
+
+## Word class data
+
+```{r}
+setwd("/Users/strott/nlp/systematicity/")
+word_classes = read.csv("data/raw/celex_classes.csv", sep="\\")
+word_classes$word = word_classes$Word
+```
+
+Finally, we used [WebCelex](http://celex.mpi.nl/) to grab information about the word class and frequency of all monomorphemic, monosyllabic words. There is information for `r nrow(word_classes)` overall.
+
+```{r}
+table(word_classes$Class)
+```
+
+As [Monaghan et al 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short) do, we remove words with more than one word class:
+
+```{r}
+word_classes$duplicate = duplicated(word_classes$Word)
+
+duplicate_words = filter(word_classes, duplicate==TRUE)$Word
+word_classes_filtered = filter(word_classes, (Word %in% duplicate_words) == FALSE)
+
+```
+
+## Combining all together
+
+Finally, we merged each of these datasets together:
+
+```{r}
+merged = merge(word_systematicity_scores, aoa_kuperman, on="word")
+merged_all = merge(merged, distinct(word_classes_filtered), on="word")
+```
+
+This results in only `r nrow(merged_all)` observations.
+
+# Results
+
+Our chief question is whether the **systematicity** of a word is related to its:
+
+* Grammatical Class
+* Age of Acquisition
+* Frequency
+* Length
+
+To answer this, we regressed *systematicity* in a standard OLS regression against each of those variables:
+
+```{r}
+model_omnibus = lm(data = merged_all,
+                   impact ~ Rating.Mean + Class + CobLog + word_length)
+summary(model_omnibus)
+```
+
+Unlike Monaghan et al (2014), we don't see a significant relationship between AoA and systematicity. This is also evident if we visualize that relationship:
+
+```{r}
+merged_all %>%
+  ggplot(aes(x = round(Rating.Mean),
+             y = impact)) +
+  geom_line(stat = "summary", fun.y = "mean") +
+  theme_minimal()
+```
+
+
+# Next Steps
+
+In order, it seems like we ought to:
+
+* Do further validation of the dataset, to account for the divergence in results from Monaghan et al, 2014.
+* Look at other lexical features.
+* Look across languages.
