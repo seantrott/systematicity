@@ -21,12 +21,19 @@ setwd("/Users/strott/nlp/systematicity/")
 ```{r}
 setwd("/Users/strott/nlp/systematicity/")
 word_systematicity_scores = read_csv("data/processed/all_words_systematicity.csv")
+all_comparisons = read_csv("data/processed/wordpair_comparisons.csv")
+
+correlation = cor.test(all_comparisons$form, all_comparisons$meaning)
 ```
 
-We calculated the systematicity of each word following the same procedure as [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short). The Jupyter notebook containing this analysis can be found [here](https://github.com/seantrott/systematicity/blob/master/systematicity_by_word_class.ipynb). 
-We obtained monosyllabic, monomorphemic words from CELEX, then filtered on the words that appeared in the Google News word embeddings, resulting in `r nrow(word_systematicity_scores)` words overall.
+We calculated the systematicity of each word following an analogous procedure as [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short). The Jupyter notebook containing this analysis can be found [here](https://github.com/seantrott/systematicity/blob/master/systematicity_by_word_class.ipynb). 
+We obtained monosyllabic, monomorphemic words from CELEX, then filtered on the words that appeared in the Google News word embeddings, resulting in `r nrow(word_systematicity_scores)` words overall. 
 
-We then calculated a **global correlation** score between the *form* and *meaning* distances of each wordpair. To obtain by-word systematicity scores, we compared this global correlation to the correlation coefficient when omitting a particular word: the difference in scores is deemed the *contribution* a given word makes to a lexicon's global systematicity.
+**Note that the current approach compares orthographic distance, as opposed to phonetic distance.**
+
+We then calculated a **global correlation** score between the *form* and *meaning* distances of each wordpair. This results in a correlation of `r correlation$estimate` (p = `r correlation$p.value`)
+
+To obtain by-word systematicity scores, we compared this global correlation to the correlation coefficient when omitting a particular word: the difference in scores is deemed the *contribution* a given word makes to a lexicon's global systematicity.
 
 The distribution of systematicity scores is plotted below:
 
@@ -109,24 +116,67 @@ To answer this, we regressed *systematicity* in a standard OLS regression agains
 ```{r}
 model_omnibus = lm(data = merged_all,
                    impact ~ Rating.Mean + Class + CobLog + word_length)
+tidy_summary = broom::tidy(summary(model_omnibus))
 summary(model_omnibus)
+
+aoa_results = filter(tidy_summary, term == "Rating.Mean")
 ```
 
-Unlike Monaghan et al (2014), we don't see a significant relationship between AoA and systematicity. This is also evident if we visualize that relationship:
+We found a small effect of AoA, *beta* = `r aoa_results$estimate`, *t* = `r round(aoa_results$statistic, 2)`, *p* = `r round(aoa_results$p.value, 3)`.
 
 ```{r}
-merged_all %>%
-  ggplot(aes(x = round(Rating.Mean),
+merged_all$rounded_aoa = round(merged_all$Rating.Mean)
+binned_age = merged_all %>% group_by(rounded_aoa) %>% summarise(mean_contribution=mean(impact),
+                                                                sd_contribution = sd(impact),
+                                                                se_contribution = sd(impact) / sqrt(nrow(merged_all)))
+binned_age = na.omit(binned_age)
+binned_age %>%
+  ggplot(aes(x = rounded_aoa,
+             y = mean_contribution)) +
+  geom_line(stat = "identity") +
+  geom_errorbar(aes(ymin = mean_contribution - se_contribution,
+                    ymax = mean_contribution + se_contribution,
+                    width = .2)) +
+  labs(x = "Age of Acquisition",
+       y = "Arbitrariness",
+       title = "Word Arbitrariness by Mean Age of Acquisition") +
+  theme_minimal()
+```
+
+
+## Detour: Interjections
+
+The most significant coefficient is actually **interjections**, though this reduced dataset only has *one* observation ("oh").
+
+To see whether interjections are truly more systematic, I will merge our word classes with systematicity scores, and ignore the AoA data for now. This requires omitting the AoA term from our model.
+
+```{r}
+merged_words = merge(word_systematicity_scores, word_classes_filtered, on="word")
+filter(merged_words, Class == "I")$word
+```
+
+As seen below, the coefficient is no longer significant, though it is in the expected direction. 
+
+```{r}
+model_interjections = lm(data = merged_words,
+                         impact ~ Class + CobLog + word_length)
+summary(model_interjections)
+
+merged_words %>%
+  ggplot(aes(x = Class,
              y = impact)) +
-  geom_line(stat = "summary", fun.y = "mean") +
+  geom_boxplot() +
+  labs(x = "Word Class",
+       y = "Arbitrariness",
+       title = "Word Arbitrariness by Mean Age of Acquisition") +
   theme_minimal()
 ```
 
 
 # Next Steps
 
-In order, it seems like we ought to:
+It seems like we ought to:
 
-* Do further validation of the dataset, to account for the divergence in results from Monaghan et al, 2014.
+* Use phonetic distance instead of orthographic distance
 * Look at other lexical features.
 * Look across languages.
