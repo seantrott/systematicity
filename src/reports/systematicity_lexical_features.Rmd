@@ -24,14 +24,36 @@ word_systematicity_scores = read_csv("data/processed/all_words_systematicity.csv
 all_comparisons = read_csv("data/processed/wordpair_comparisons.csv")
 
 correlation = cor.test(all_comparisons$form, all_comparisons$meaning)
+
+binned = all_comparisons %>% group_by(form) %>% summarise(mean_meaning = mean(meaning),
+                                                                  sd_meaning = sd(meaning),
+                                                                  se_meaning = sd(meaning)/sqrt(nrow(all_comparisons)))
+
 ```
 
-We calculated the systematicity of each word following an analogous procedure as [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short). The Jupyter notebook containing this analysis can be found [here](https://github.com/seantrott/systematicity/blob/master/systematicity_by_word_class.ipynb). 
+We calculated the systematicity of each word following an analogous procedure as [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short). The Jupyter notebook containing this analysis can be found [here](https://github.com/seantrott/systematicity/blob/master/systematicity_by_word_class.ipynb).
+
+
 We obtained monosyllabic, monomorphemic words from CELEX, then filtered on the words that appeared in the Google News word embeddings, resulting in `r nrow(word_systematicity_scores)` words overall. 
 
 **Note that the current approach compares orthographic distance, as opposed to phonetic distance.**
 
-We then calculated a **global correlation** score between the *form* and *meaning* distances of each wordpair. This results in a correlation of `r correlation$estimate` (p = `r correlation$p.value`)
+We then calculated a **global correlation** score between the *form* and *meaning* distances of each wordpair. This results in a correlation of `r correlation$estimate` (p = `r correlation$p.value`). Below we see a line-plot relating the distance between *word forms* to the *similarity in meaning* (error bars representing 4 S.E. from the mean).
+
+```{r}
+binned %>%
+  ggplot(aes(x = form,
+             y = mean_meaning)) +
+  geom_line(stat = "identity") +
+  geom_errorbar(aes(ymin = mean_meaning - 4*se_meaning,
+                    ymax = mean_meaning + 4*se_meaning,
+                    width = .1)) +
+  labs(x = "Form distance",
+       y = "Meaning similarity",
+       title = "Meaning similarity by form distance") +
+  theme_minimal()
+```
+
 
 To obtain by-word systematicity scores, we compared this global correlation to the correlation coefficient when omitting a particular word: the difference in scores is deemed the *contribution* a given word makes to a lexicon's global systematicity.
 
@@ -98,6 +120,7 @@ Finally, we merged each of these datasets together:
 ```{r}
 merged = merge(word_systematicity_scores, aoa_kuperman, on="word")
 merged_all = merge(merged, distinct(word_classes_filtered), on="word")
+
 ```
 
 This results in only `r nrow(merged_all)` observations.
