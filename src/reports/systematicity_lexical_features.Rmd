@@ -1,0 +1,268 @@
+---
+title: "Systematicity across grammatical category and other lexical features"
+output: html_document
+---
+
+# Loading
+
+```{r}
+library(tidyverse)
+library(lme4)
+```
+
+# Introduction
+
+This report investigates whether the **sub-morphemic form-meaning systematicity** of different words correlates with various lexical features, including grammatical category, age of acquisition, and word frequency.
+
+Previous work ([Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short)) has found that age of acquisition (AoA) predicts systematicity, above and beyond other variables like orthographic/phonological length or frequency. Specifically, earlier-acquired words were more systematic.
+
+# Dataset
+
+```{r}
+setwd("/Users/seantrott/Dropbox/UCSD/Research/Systematicity/systematicity")
+```
+
+
+## Systematicity of individual words
+
+```{r}
+setwd("/Users/seantrott/Dropbox/UCSD/Research/Systematicity/systematicity")
+
+word_systematicity_scores = read_csv("data/processed/all_words_systematicity.csv")
+all_comparisons = read_csv("data/processed/wordpair_comparisons.csv")
+
+correlation = cor.test(all_comparisons$form, all_comparisons$meaning)
+
+binned = all_comparisons %>% group_by(form) %>% summarise(mean_meaning = mean(meaning),
+                                                                  sd_meaning = sd(meaning),
+                                                                  se_meaning = sd(meaning)/sqrt(nrow(all_comparisons)))
+
+```
+
+We calculated the systematicity of each word following an analogous procedure as [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short). The Jupyter notebook containing this analysis can be found [here](https://github.com/seantrott/systematicity/blob/master/systematicity_by_word_class.ipynb).
+
+
+We obtained monosyllabic, monomorphemic words from CELEX, then filtered on the words that appeared in the Google News word embeddings, resulting in `r nrow(word_systematicity_scores)` words overall. 
+
+**Note that the current approach compares orthographic distance, as opposed to phonetic distance.**
+
+We then calculated a **global correlation** score between the *form* and *meaning* distances of each wordpair. This results in a correlation of `r correlation$estimate` (p = `r correlation$p.value`). Below we see a line-plot relating the distance between *word forms* to the *similarity in meaning* (error bars representing 4 S.E. from the mean).
+
+```{r}
+binned %>%
+  ggplot(aes(x = form,
+             y = mean_meaning)) +
+  geom_line(stat = "identity") +
+  geom_errorbar(aes(ymin = mean_meaning - 4*se_meaning,
+                    ymax = mean_meaning + 4*se_meaning,
+                    width = .1)) +
+  labs(x = "Form distance",
+       y = "Meaning similarity",
+       title = "Meaning similarity by form distance") +
+  theme_minimal()
+```
+
+
+To obtain by-word systematicity scores, we compared this global correlation to the correlation coefficient when omitting a particular word: the difference in scores is deemed the *contribution* a given word makes to a lexicon's global systematicity.
+
+The distribution of systematicity scores is plotted below:
+
+```{r}
+word_systematicity_scores %>%
+  ggplot(aes(x = impact)) +
+  geom_histogram() +
+  labs(x = "Contribution to systematicity",
+       title = "Distribution of systematicity scores") +
+  theme_minimal()
+```
+
+## Age of Acquisition data
+
+```{r}
+aoa_kuperman = read_csv("data/raw/AoA_Kuperman.csv")
+aoa_kuperman$word = aoa_kuperman$Word
+```
+
+For AoA data, we used the same dataset that [Monaghan et al, 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short) used, collected by [Kuperman et al (2012)](http://crr.ugent.be/archives/806).
+
+There are scores for `r nrow(aoa_kuperman)` words overall.
+
+```{r}
+aoa_kuperman %>%
+  ggplot(aes(x = Rating.Mean)) +
+  geom_histogram() +
+  labs(x = "Mean AoA Rating",
+       title = "Distribution of AoA ratings") +
+  theme_minimal()
+```
+
+## Word class data
+
+```{r}
+word_classes = read.csv("data/raw/celex_classes.csv", sep="\\")
+word_classes$word = word_classes$Word
+```
+
+Finally, we used [WebCelex](http://celex.mpi.nl/) to grab information about the word class and frequency of all monomorphemic, monosyllabic words. There is information for `r nrow(word_classes)` overall.
+
+```{r}
+table(word_classes$Class)
+```
+
+As [Monaghan et al 2014](http://rstb.royalsocietypublishing.org/content/369/1651/20130299.short) do, we remove words with more than one word class:
+
+```{r}
+word_classes$duplicate = duplicated(word_classes$Word)
+
+duplicate_words = filter(word_classes, duplicate==TRUE)$Word
+word_classes_filtered = filter(word_classes, (Word %in% duplicate_words) == FALSE)
+table(word_classes_filtered$Class)
+```
+
+## CHILDES Frequency Data
+
+Beyond the COBUILD frequency estimates from CELEX (taken from newspapers, books, etc.), it could be that the systematicity of a word matters with regards to its frequency in particular contexts, such as **child-directed speech**. To our knowledge, this has not yet been tested.
+
+We obtained frequency estimates from the CHILDES corpus using the Ping Li derivations, found [here](https://childes.talkbank.org/derived/parentfreq.cdc).
+
+```{r}
+childes_frequencies = read_csv("data/processed/childes_frequencies.csv")
+
+childes_frequencies %>%
+  ggplot(aes(x = childes_frequency)) +
+  geom_histogram() +
+  theme_minimal() +
+  labs(x = "Frequency in CHILDES Corpus")
+```
+
+Obviously, this data is heavily skewed, so we'll log it to be consistent with COBUILD.
+
+```{r}
+childes_frequencies$frequency_logged = log10(childes_frequencies$childes_frequency)
+
+childes_frequencies %>%
+  ggplot(aes(x = frequency_logged)) +
+  geom_histogram() +
+  theme_minimal() +
+  labs(x = "Frequency in CHILDES Corpus (Log)")
+
+subset_childes = subset(childes_frequencies, select = c("word", "frequency_logged",
+                                                        "childes_frequency"))
+```
+
+
+## Combining all together
+
+Finally, we merged each of these datasets together:
+
+```{r}
+merged_aoa = merge(word_systematicity_scores, aoa_kuperman, on="word")
+merged_all = merge(merged_aoa, distinct(word_classes_filtered), on="word")
+
+# merged_all = merge(merged_classes, subset_childes, on="word")
+
+```
+
+This results in only `r nrow(merged_all)` observations.
+
+# Results
+
+Our chief question is whether the **systematicity** of a word is related to its:
+
+* Grammatical Class
+* Age of Acquisition
+* Frequency
+* Length
+
+To answer this, we regressed *systematicity* in a standard OLS regression against each of those variables:
+
+```{r}
+model_omnibus = lm(data = merged_all,
+                   impact ~ Rating.Mean + Class + CobLog + word_length)
+tidy_summary = broom::tidy(summary(model_omnibus))
+summary(model_omnibus)
+
+aoa_results = filter(tidy_summary, term == "Rating.Mean")
+```
+
+We found a small effect of AoA, *beta* = `r aoa_results$estimate`, *t* = `r round(aoa_results$statistic, 2)`, *p* = `r round(aoa_results$p.value, 3)`.
+
+```{r}
+merged_all$rounded_aoa = round(merged_all$Rating.Mean)
+binned_age = merged_all %>% group_by(rounded_aoa) %>% summarise(mean_contribution=mean(impact),
+                                                                sd_contribution = sd(impact),
+                                                                se_contribution = sd(impact) / sqrt(nrow(merged_all)))
+binned_age = na.omit(binned_age)
+binned_age %>%
+  ggplot(aes(x = rounded_aoa,
+             y = mean_contribution)) +
+  geom_line(stat = "identity") +
+  geom_errorbar(aes(ymin = mean_contribution - se_contribution,
+                    ymax = mean_contribution + se_contribution,
+                    width = .2)) +
+  labs(x = "Age of Acquisition",
+       y = "Arbitrariness",
+       title = "Word Arbitrariness by Mean Age of Acquisition") +
+  theme_minimal()
+```
+
+
+## Detour: CHILDES Frequencies
+
+We are also interested in whether a word's frequency in Child-directed speech predicts its systematicity score. To test this, we regress systematicity against logged CHILDES frequency.
+
+```{r}
+merged_childes = merge(word_systematicity_scores, subset_childes, on="word")
+
+summary(lm(data = merged_childes,
+           impact ~ frequency_logged))
+
+merged_childes %>%
+  ggplot(aes(x = frequency_logged,
+             y = impact)) +
+  geom_point() +
+  # scale_x_log10() +
+  geom_smooth(method = "lm") +
+  labs(x = "CHILDES Frequency (Logged)",
+       y = "Arbitrariness") +
+  theme_minimal()
+```
+
+
+## Detour: Interjections
+
+The most significant coefficient is actually **interjections**, though this reduced dataset only has *one* observation ("oh").
+
+To see whether interjections are truly more systematic, I will merge our word classes with systematicity scores, and ignore the AoA data for now. This requires omitting the AoA term from our model.
+
+```{r}
+merged_words = merge(word_systematicity_scores, word_classes_filtered, on="word")
+filter(merged_words, Class == "I")$word
+```
+
+As seen below, the coefficient is no longer significant, though it is in the expected direction. 
+
+```{r}
+model_interjections = lm(data = merged_words,
+                         impact ~ Class + CobLog + word_length)
+summary(model_interjections)
+
+merged_words %>%
+  ggplot(aes(x = Class,
+             y = impact)) +
+  geom_boxplot() +
+  labs(x = "Word Class",
+       y = "Arbitrariness",
+       title = "Word Arbitrariness by Mean Age of Acquisition") +
+  theme_minimal()
+```
+
+On the other hand, it does appear that **verbs** are more arbitrary. 
+
+# Conclusion
+
+To conclude:
+
+* **Arbitrariness** is positively predicted by **mean AoA**, though only when we also add in covariates for grammatical class, frequency, and word length. 
+* **Arbitrariness** is also weakly related to **log frequency** and **grammatical class** (specifically, *verbs*), which is not consistent with the findings of Monaghan et al (2014).
+* **Arbitrariness** is not correlated with frequency in child-directed speech.
